@@ -85,6 +85,7 @@ pub(super) enum Stage<T: Future> {
 impl<T: Future, S: Schedule> Cell<T, S> {
     /// Allocates a new task cell, containing the header, trailer, and core
     /// structures.
+    #[inline(always)]
     pub(super) fn new(future: T, state: State) -> Box<Cell<T, S>> {
         Box::new(Cell {
             header: Header {

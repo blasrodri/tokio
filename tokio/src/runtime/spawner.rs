@@ -20,6 +20,7 @@ pub(crate) enum Spawner {
 
 cfg_rt_core! {
     impl Spawner {
+        #[inline(always)]
         pub(crate) fn spawn<F>(&self, future: F) -> JoinHandle<F::Output>
         where
             F: Future + Send + 'static,

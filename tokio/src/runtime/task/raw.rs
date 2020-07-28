@@ -38,6 +38,7 @@ pub(super) fn vtable<T: Future, S: Schedule>() -> &'static Vtable {
 }
 
 impl RawTask {
+    #[inline(always)]
     pub(super) fn new<T, S>(task: T) -> RawTask
     where
         T: Future,

@@ -80,6 +80,7 @@ pub(crate) trait Schedule: Sync + Sized + 'static {
 }
 
 /// Create a new task with an associated join handle
+#[inline(always)]
 pub(crate) fn joinable<T, S>(task: T) -> (Notified<S>, JoinHandle<T::Output>)
 where
     T: Future + Send + 'static,

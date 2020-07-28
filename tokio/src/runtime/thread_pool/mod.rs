@@ -99,6 +99,7 @@ impl Drop for ThreadPool {
 
 impl Spawner {
     /// Spawns a future onto the thread pool
+    #[inline(always)]
     pub(crate) fn spawn<F>(&self, future: F) -> JoinHandle<F::Output>
     where
         F: Future + Send + 'static,
