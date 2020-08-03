@@ -9,6 +9,8 @@ use std::pin::Pin;
 use std::task::Poll::*;
 use std::task::{Context, Poll};
 
+use bytes::BytesMut;
+
 use self::State::*;
 
 /// `T` should not implement _both_ Read and Write.
@@ -22,7 +24,7 @@ pub(crate) struct Blocking<T> {
 
 #[derive(Debug)]
 pub(crate) struct Buf {
-    buf: Vec<u8>,
+    buf: BytesMut,
     pos: usize,
 }
 
@@ -190,7 +192,7 @@ macro_rules! uninterruptibly {
 impl Buf {
     pub(crate) fn with_capacity(n: usize) -> Buf {
         Buf {
-            buf: Vec::with_capacity(n),
+            buf: BytesMut::with_capacity(n),
             pos: 0,
         }
     }
