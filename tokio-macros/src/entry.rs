@@ -25,6 +25,12 @@ impl RuntimeFlavor {
 struct FinalConfig {
     flavor: RuntimeFlavor,
     worker_threads: Option<usize>,
+    io_driver: DriverStatus,
+}
+#[derive(Clone, Copy)]
+enum DriverStatus {
+    Enabled,
+    Disabled,
 }
 
 struct Configuration {
@@ -32,6 +38,7 @@ struct Configuration {
     default_flavor: RuntimeFlavor,
     flavor: Option<RuntimeFlavor>,
     worker_threads: Option<(usize, Span)>,
+    io_driver: DriverStatus,
 }
 
 impl Configuration {
@@ -44,6 +51,7 @@ impl Configuration {
             },
             flavor: None,
             worker_threads: None,
+            io_driver: DriverStatus::Disabled,
         }
     }
 
@@ -79,8 +87,21 @@ impl Configuration {
         Ok(())
     }
 
+    fn set_io_driver_status(
+        &mut self,
+        io_driver_status: syn::Lit,
+        span: Span,
+    ) -> Result<(), syn::Error> {
+        self.io_driver = match parse_bool(io_driver_status, span, "disable_io_driver")? {
+            true => DriverStatus::Disabled,
+            false => DriverStatus::Enabled,
+        };
+        Ok(())
+    }
+
     fn build(&self) -> Result<FinalConfig, syn::Error> {
         let flavor = self.flavor.unwrap_or(self.default_flavor);
+        let io_driver = self.io_driver;
         use RuntimeFlavor::*;
         match (flavor, self.worker_threads) {
             (CurrentThread, Some((_, worker_threads_span))) => Err(syn::Error::new(
@@ -90,10 +111,12 @@ impl Configuration {
             (CurrentThread, None) => Ok(FinalConfig {
                 flavor,
                 worker_threads: None,
+                io_driver,
             }),
             (Threaded, worker_threads) if self.rt_multi_thread_available => Ok(FinalConfig {
                 flavor,
                 worker_threads: worker_threads.map(|(val, _span)| val),
+                io_driver,
             }),
             (Threaded, _) => {
                 let msg = if self.flavor.is_none() {
@@ -130,6 +153,16 @@ fn parse_string(int: syn::Lit, span: Span, field: &str) -> Result<String, syn::E
         _ => Err(syn::Error::new(
             span,
             format!("Failed to parse {} as string.", field),
+        )),
+    }
+}
+
+fn parse_bool(bool_lit: syn::Lit, span: Span, field: &str) -> Result<bool, syn::Error> {
+    match bool_lit {
+        syn::Lit::Bool(lit) => Ok(lit.value),
+        _ => Err(syn::Error::new(
+            span,
+            format!("Failed to parse {} as integer.", field),
         )),
     }
 }
@@ -178,6 +211,9 @@ fn parse_knobs(
                         let msg = "Attribute `core_threads` is renamed to `worker_threads`";
                         return Err(syn::Error::new_spanned(namevalue, msg));
                     }
+                    "disable_io_driver" => {
+                        config.set_io_driver_status(namevalue.lit.clone(), namevalue.span())?;
+                    }
                     name => {
                         let msg = format!("Unknown attribute {} is specified; expected one of: `flavor`, `worker_threads`", name);
                         return Err(syn::Error::new_spanned(namevalue, msg));
@@ -204,11 +240,11 @@ fn parse_knobs(
                             macro_name
                         )
                     }
-                    "flavor" | "worker_threads" => {
+                    "flavor" | "worker_threads" | "disable_io_driver" => {
                         format!("The `{}` attribute requires an argument.", name)
                     }
                     name => {
-                        format!("Unknown attribute {} is specified; expected one of: `flavor`, `worker_threads`", name)
+                        format!("Unknown attribute {} is specified; expected one of: `flavor`, `worker_threads`, `disable_io_driver`", name)
                     }
                 };
                 return Err(syn::Error::new_spanned(path, msg));
@@ -236,6 +272,15 @@ fn parse_knobs(
         rt = quote! { #rt.worker_threads(#v) };
     }
 
+    match config.io_driver {
+        DriverStatus::Disabled => {
+            rt = quote! { #rt.enable_time() };
+        }
+        DriverStatus::Enabled => {
+            rt = quote! { #rt.enable_all() };
+        }
+    }
+
     let header = {
         if is_test {
             quote! {
@@ -251,7 +296,6 @@ fn parse_knobs(
         #(#attrs)*
         #vis #sig {
             #rt
-                .enable_all()
                 .build()
                 .unwrap()
                 .block_on(async { #body })
